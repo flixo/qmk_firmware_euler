@@ -25,6 +25,8 @@ enum custom_keycodes {
     KC_FN = SAFE_RANGE,
     CK_PTI,
     CK_PTD,
+    CK_WINL,
+    
 };
 
 
@@ -32,23 +34,70 @@ enum custom_keycodes {
 #define PT_SENSITIVITY_MIN     10
 #define PT_SENSITIVITY_MAX     255
 #define PT_SENSITIVITY_STEP    20
+#define AUTO_MOUSE_TIMEOUT_MS  700
 
 static uint8_t pt_sensitivity = PT_SENSITIVITY_DEFAULT;
 
 // Rotate trackpoint input by this many degrees (positive = counter-clockwise)
 #define PT_ROTATION_DEGREES 10.0f
 
-// How much accumulated trackpoint movement is needed to emit one scroll tick
-#define PT_SCROLL_THRESHOLD 20
+// Lower threshold = more sensitive scrolling
+#define PT_SCROLL_THRESHOLD 28
+
+// Low-pass filter for scroll source: higher keeps more previous value (0-255)
+#define PT_SCROLL_FILTER_ALPHA 192
+
+// Volume mode tuning when _FL is held (Y axis only)
+#define PT_VOLUME_THRESHOLD 56
+#define PT_VOLUME_FILTER_ALPHA 224
 
 static float pt_rot_sin = 0.0f;
 static float pt_rot_cos = 1.0f;
 
 static int16_t pt_scroll_x_acc = 0;
 static int16_t pt_scroll_y_acc = 0;
+static int16_t pt_scroll_x_filtered = 0;
+static int16_t pt_scroll_y_filtered = 0;
+static int16_t pt_volume_y_acc = 0;
+static int16_t pt_volume_y_filtered = 0;
 
-#define KC_OE ALGR(KC_QUOT)
-#define KC_AE ALGR(KC_SCLN)
+static uint32_t auto_mouse_timer = 0;
+static uint8_t auto_mouse_lbtn_holds = 0;
+static uint8_t auto_mouse_rbtn_holds = 0;
+static bool left_gui_pending = false;
+static bool left_gui_chorded = false;
+
+static inline void auto_mouse_refresh_timer(void) {
+    auto_mouse_timer = timer_read32();
+}
+
+static inline bool auto_mouse_is_active(void) {
+    return timer_elapsed32(auto_mouse_timer) < AUTO_MOUSE_TIMEOUT_MS;
+}
+
+static inline void auto_mouse_press(uint16_t btn_keycode, uint8_t *hold_count) {
+    if (*hold_count == 0) {
+        register_code(btn_keycode);
+    }
+    (*hold_count)++;
+    auto_mouse_refresh_timer();
+}
+
+static inline void auto_mouse_release(uint16_t btn_keycode, uint8_t *hold_count) {
+    if (*hold_count > 0) {
+        (*hold_count)--;
+        if (*hold_count == 0) {
+            unregister_code(btn_keycode);
+        }
+    }
+}
+
+static inline bool host_is_windows(void) {
+    return detected_host_os() == OS_WINDOWS;
+}
+
+#define KC_OE ALGR(KC_SCLN)
+#define KC_AE ALGR(KC_QUOT)
 #define KC_AA ALGR(KC_LBRC)
 
 const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
@@ -66,7 +115,7 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
     /**/  MS_BTN2,   KC_LSFT,     KC_Z,           KC_X,      KC_C,    KC_V,      KC_B,       MASKED,     KC_UP,    MASKED,      KC_N,     KC_M,   KC_COMM,   KC_DOT,          KC_SLSH,        KC_RSFT,                 /**/
     /**|           └──────────┘└────────┘       └────────┘└────────┘└────────┘└────────┘              └─────────┘             └────────┘└────────┘└────────┘└────────┘       └────────┘└───────────────────┘           |**/
     /**|                ┌──────────┐┌────────┐┌────────┐┌──────────────────────┐┌────────┐  ┌────────┐┌─────────┐┌────────┐  ┌────────┐┌──────────────────────┐┌────────┐┌────────┐┌────────┐┌─────────┐               |**/
-    /**/  MS_BTN1,        KC_LCTL,   KC_LGUI,  KC_LALT,          KC_SPC,         MO(_UL),     KC_LEFT,  KC_DOWN,  KC_RGHT,     KC_BSPC,       MO(_FL),          KC_RALT,  KC_RGUI,   KC_APP,   KC_RCTL                 /**/
+    /**/  MS_BTN1,        KC_LCTL,   CK_WINL,  KC_LALT,          KC_SPC,         MO(_UL),     KC_LEFT,  KC_DOWN,  KC_RGHT,     KC_BSPC,       MO(_FL),          KC_RALT,  KC_RGUI,   KC_APP,   KC_RCTL                 /**/
     /**|                └──────────┘└────────┘└────────┘└──────────────────────┘│        │  └────────┘└─────────┘└────────┘  │        │└──────────────────────┘└────────┘└────────┘└────────┘└─────────┘               |**/
     /**|                                                                        │        │                                   │        │                                                                                |**/
     /**|                                                                        └────────┘                                   └────────┘                                                                                |**/
@@ -111,7 +160,7 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
     /**|                                                                        │        │                                   │        │                                                                                |**/
     /**|                                                                        └────────┘                                   └────────┘                                                                                |**/
     ),
-
+    
     [_TEMPLATE] = LAYOUT_fullsize_ansi( /* Template Layer */
     /**|  ┌───────────────┐┌────────┐┌────────┐ ┌────────┐┌────────┐┌────────┐┌────────┐    ┌────────┐┌─────────┐┌────────┐   ┌────────┐┌────────┐┌────────┐┌────────┐ ┌────────┐┌────────┐┌────────┐┌─────────────┐   |**/
     /**/       ______,       ______,   ______,    ______,   ______,   ______,   ______,       ______,   ______,   ______,       ______,   ______,   ______,   ______,    ______,   ______,   ______,     ______,       /**/
@@ -156,34 +205,65 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
         // Apply rotation
         float rx = mouse_report->x * pt_rot_cos - mouse_report->y * pt_rot_sin;
         float ry = mouse_report->x * pt_rot_sin + mouse_report->y * pt_rot_cos;
+        
         mouse_report->x = (int8_t)rx;
         mouse_report->y = (int8_t)ry;
 
         // Scroll mode when _UL layer is active
         if (IS_LAYER_ON(_UL)) {
-            pt_scroll_x_acc += mouse_report->x;
-            pt_scroll_y_acc += mouse_report->y;
+            // Smooth trackpoint noise for less "ratchety" scroll behavior.
+            pt_scroll_x_filtered = (int16_t)((pt_scroll_x_filtered * PT_SCROLL_FILTER_ALPHA + mouse_report->x * (256 - PT_SCROLL_FILTER_ALPHA)) / 256);
+            pt_scroll_y_filtered = (int16_t)((pt_scroll_y_filtered * PT_SCROLL_FILTER_ALPHA + mouse_report->y * (256 - PT_SCROLL_FILTER_ALPHA)) / 256);
+
+            pt_scroll_x_acc += pt_scroll_x_filtered;
+            pt_scroll_y_acc += pt_scroll_y_filtered;
 
             mouse_report->x = 0;
             mouse_report->y = 0;
             mouse_report->h = 0;
             mouse_report->v = 0;
 
-            while (pt_scroll_x_acc >= PT_SCROLL_THRESHOLD) {
-                mouse_report->h++;
+            // Emit at most one tick per axis per report to keep scroll smooth.
+            if (pt_scroll_x_acc >= PT_SCROLL_THRESHOLD) {
+                mouse_report->h = 1;
                 pt_scroll_x_acc -= PT_SCROLL_THRESHOLD;
-            }
-            while (pt_scroll_x_acc <= -PT_SCROLL_THRESHOLD) {
-                mouse_report->h--;
+            } else if (pt_scroll_x_acc <= -PT_SCROLL_THRESHOLD) {
+                mouse_report->h = -1;
                 pt_scroll_x_acc += PT_SCROLL_THRESHOLD;
             }
-            while (pt_scroll_y_acc >= PT_SCROLL_THRESHOLD) {
-                mouse_report->v--;
+
+            if (pt_scroll_y_acc >= PT_SCROLL_THRESHOLD) {
+                mouse_report->v = -1;
                 pt_scroll_y_acc -= PT_SCROLL_THRESHOLD;
-            }
-            while (pt_scroll_y_acc <= -PT_SCROLL_THRESHOLD) {
-                mouse_report->v++;
+            } else if (pt_scroll_y_acc <= -PT_SCROLL_THRESHOLD) {
+                mouse_report->v = 1;
                 pt_scroll_y_acc += PT_SCROLL_THRESHOLD;
+            }
+
+            // Keep auto-mouse mode alive while scrolling with _UL held.
+            if (mouse_report->h != 0 || mouse_report->v != 0) {
+                auto_mouse_refresh_timer();
+            }
+            return;
+        }
+
+        // Volume mode when _FL layer is active (Y axis only)
+        if (IS_LAYER_ON(_FL)) {
+            pt_volume_y_filtered = (int16_t)((pt_volume_y_filtered * PT_VOLUME_FILTER_ALPHA + mouse_report->y * (256 - PT_VOLUME_FILTER_ALPHA)) / 256);
+            pt_volume_y_acc += pt_volume_y_filtered;
+
+            mouse_report->x = 0;
+            mouse_report->y = 0;
+            mouse_report->h = 0;
+            mouse_report->v = 0;
+
+            // Up on stick = volume up, down on stick = volume down.
+            if (pt_volume_y_acc >= PT_VOLUME_THRESHOLD) {
+                tap_code(KC_VOLD);
+                pt_volume_y_acc -= PT_VOLUME_THRESHOLD;
+            } else if (pt_volume_y_acc <= -PT_VOLUME_THRESHOLD) {
+                tap_code(KC_VOLU);
+                pt_volume_y_acc += PT_VOLUME_THRESHOLD;
             }
             return;
         }
@@ -191,6 +271,10 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
         // Reset accumulators when not in scroll mode
         pt_scroll_x_acc = 0;
         pt_scroll_y_acc = 0;
+        pt_scroll_x_filtered = 0;
+        pt_scroll_y_filtered = 0;
+        pt_volume_y_acc = 0;
+        pt_volume_y_filtered = 0;
         // Double sensitivity when shift is held
         if (get_mods() & MOD_MASK_SHIFT) {
             mouse_report->x = (int8_t)((int16_t)mouse_report->x * 2);
@@ -200,10 +284,18 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
         // Apply global sensitivity scaling (128 = 1x)
         mouse_report->x = (int8_t)((int16_t)mouse_report->x * pt_sensitivity / PT_SENSITIVITY_DEFAULT);
         mouse_report->y = (int8_t)((int16_t)mouse_report->y * pt_sensitivity / PT_SENSITIVITY_DEFAULT);
+
+        // Enter/refresh auto-mouse mode only when pointer movement is produced.
+        if (mouse_report->x != 0 || mouse_report->y != 0) {
+            auto_mouse_refresh_timer();
+        }
     }
 
     void matrix_scan_user(void) {
-       
+        // Keep auto-mouse alive while button emulation keys are held.
+        if (auto_mouse_lbtn_holds > 0 || auto_mouse_rbtn_holds > 0) {
+            auto_mouse_refresh_timer();
+        }
     }
 #endif
 
@@ -228,7 +320,59 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
         }
     #endif
 
+    if (left_gui_pending && !left_gui_chorded && keycode != CK_WINL && record->event.pressed) {
+        register_code(KC_LGUI);
+        left_gui_chorded = true;
+    }
+
     switch (keycode) {
+        case CK_WINL:
+            if (record->event.pressed) {
+                left_gui_pending = true;
+                left_gui_chorded = false;
+            } else {
+                if (left_gui_chorded) {
+                    unregister_code(KC_LGUI);
+                } else if (host_is_windows()) {
+                    tap_code16(ALGR(KC_SPC));
+                } else {
+                    tap_code(KC_LGUI);
+                }
+
+                left_gui_pending = false;
+                left_gui_chorded = false;
+            }
+            return false;
+        case MO(_FL):
+            if (auto_mouse_is_active()) {
+                if (record->event.pressed) {
+                    auto_mouse_press(MS_BTN2, &auto_mouse_rbtn_holds);
+                } else {
+                    auto_mouse_release(MS_BTN2, &auto_mouse_rbtn_holds);
+                }
+                return false;
+            }
+            return true;
+        case KC_SPC:
+            if (auto_mouse_is_active()) {
+                if (record->event.pressed) {
+                    auto_mouse_press(MS_BTN1, &auto_mouse_lbtn_holds);
+                } else {
+                    auto_mouse_release(MS_BTN1, &auto_mouse_lbtn_holds);
+                }
+                return false;
+            }
+            return true;
+        case KC_BSPC:
+            if (auto_mouse_is_active()) {
+                if (record->event.pressed) {
+                    auto_mouse_press(MS_BTN2, &auto_mouse_rbtn_holds);
+                } else {
+                    auto_mouse_release(MS_BTN2, &auto_mouse_rbtn_holds);
+                }
+                return false;
+            }
+            return true;
         case CK_PTI:
             if (record->event.pressed) {
                 if (pt_sensitivity <= PT_SENSITIVITY_MAX - PT_SENSITIVITY_STEP) {
