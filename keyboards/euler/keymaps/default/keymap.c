@@ -26,7 +26,6 @@ enum custom_keycodes {
     CK_PTI,
     CK_PTD,
     CK_WINL,
-    
 };
 
 
