@@ -8,3 +8,6 @@
 
 #undef RP_I2C_USE_I2C1
 #define RP_I2C_USE_I2C1 FALSE
+
+#undef RP_PWM_USE_PWM2
+#define RP_PWM_USE_PWM2 TRUE

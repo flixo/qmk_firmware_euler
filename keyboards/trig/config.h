@@ -20,6 +20,24 @@
 #    define HT16K33_SEGMENT_I2C_ADDRESS (0x71 << 1)
 #endif
 
+// Rotary encoder: A=GP0, B=GP1.
+#define ENCODER_A_PINS { GP0 }
+#define ENCODER_B_PINS { GP1 }
+#define ENCODER_RESOLUTION 2
+
+// Piezo speaker on GP20 (PWM slice 2 on RP2040).
+#define AUDIO_PIN GP20
+#define AUDIO_PWM_DRIVER PWMD2
+#define AUDIO_PWM_CHANNEL RP2040_PWM_CHANNEL_A
+#define AUDIO_INIT_DELAY
+
+// Battery sense on GP27 through 100k/100k divider (single-cell Li-ion).
+#define BATTERY_ADC_PIN GP27
+#define BATTERY_ADC_REF_VOLTAGE_MV 3300
+#define BATTERY_ADC_RESOLUTION 10
+#define BATTERY_VOLTAGE_DIVIDER_R1 100
+#define BATTERY_ADC_VOLTAGE_DIVIDER_R2 100
+
 #define WS2812_DI_PIN GP21
 #define RGBLIGHT_EFFECT_RAINBOW_MOOD
 
