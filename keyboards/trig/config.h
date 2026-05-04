@@ -1,6 +1,11 @@
+#pragma once
+
 #define RP2040_BOOTLOADER_DOUBLE_TAP_RESET
 #define RP2040_BOOTLOADER_DOUBLE_TAP_TIMEOUT 500U // milliseconds
 
+#define USB_DEVICE_NAME "Trig"
+#define MANUFACTURER "Jens Nomtak"
+#define PRODUCT "Trig"
 // HT16K33 I2C defaults for RP2040; adjust pins if your wiring is different.
 #ifndef I2C_DRIVER
 #    define I2C_DRIVER I2CD0
@@ -23,7 +28,8 @@
 // Rotary encoder: A=GP0, B=GP1.
 #define ENCODER_A_PINS { GP0 }
 #define ENCODER_B_PINS { GP1 }
-#define ENCODER_RESOLUTION 2
+// Use 1 step to avoid losing the first detent on direction changes.
+#define ENCODER_RESOLUTION 1
 
 // Piezo speaker on GP20 (PWM slice 2 on RP2040).
 #define AUDIO_PIN GP20

@@ -1,0 +1,21 @@
+Transport:
+HID class SET_REPORT
+Report type: Output (2)
+Report ID: 0
+Report payload (12 bytes total):
+Bytes 0-3: ASCII tag time
+Bytes 4-11: Unix timestamp seconds as unsigned 64-bit little-endian
+Layout:
+Offset 0, len 4, type bytes, value 74 69 6D 65 (time)
+Offset 4, len 8, type u64 LE, value unix_secs
+Example:
+If unix time is 1714771200 (0x66355B80), payload bytes are:
+74 69 6D 65 80 5B 35 66 00 00 00 00
+So your handler should:
+
+Verify payload length >= 12
+Verify first four bytes equal time
+Parse bytes 4..12 as little-endian u64 seconds since Unix epoch
+
+
+/home/jensnomtak/code/trig-soft/src/main.rs

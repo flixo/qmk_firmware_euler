@@ -4,6 +4,7 @@
 #pragma once
 
 #include QMK_KEYBOARD_H
+#include <stddef.h>
 
 enum custom_keycodes {
     KC_FN = SAFE_RANGE,
@@ -29,3 +30,5 @@ bool calc_mode_browse_scientific(int8_t delta);
 bool calc_mode_confirm_scientific(void);
 uint8_t calc_mode_scientific_matrix_symbol(void);
 bool calc_mode_handle_keycode(uint16_t keycode);
+bool calc_mode_get_current_value_text(char *out, size_t out_size);
+bool calc_mode_set_input_from_text(const char *text);

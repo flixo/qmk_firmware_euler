@@ -9,6 +9,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <math.h>
+#include <ctype.h>
 #include "timer.h"
 #include <limits.h>
 
@@ -335,7 +336,20 @@ static bool calc_prepare_binary_scientific(uint8_t sci_index) {
 
 /* PI acts as a shorthand constant entry. */
 static bool calc_insert_pi_value(void) {
-    calc_commit_result(3.14159265358979323846);
+    static const char pi_text[] = "3.141592653589793";
+    const size_t pi_len = strlen(pi_text);
+
+    if (pi_len >= sizeof(calc_input_text)) {
+        return false;
+    }
+
+    memcpy(calc_input_text, pi_text, pi_len + 1);
+    calc_input_text_len = (uint8_t)pi_len;
+    calc_input_rebuild_from_text();
+
+    calc_error = false;
+    calc_error_overflow = false;
+    calc_last_eval_valid = false;
     calc_last_sci_unary_valid = false;
     return true;
 }
@@ -432,6 +446,10 @@ static int8_t calc_bank_index_from_keycode(uint16_t keycode) {
         default:
             return -1;
     }
+}
+
+static bool calc_sci_is_constant(uint8_t sci_index) {
+    return sci_index == MATRIX_SCI_PI;
 }
 
 /* Wraps encoder browse index over the scientific function table. */
@@ -1203,11 +1221,24 @@ bool calc_mode_browse_scientific(int8_t delta) {
         return false;
     }
 
+    // When waiting for rhs of a binary operator, only constant insertions are
+    // valid from scientific browse (currently PI).
+    const bool constants_only = (calc_pending_op != 0);
+
     if (!calc_sci_active) {
         calc_sci_active = true;
     }
 
-    calc_sci_index = calc_wrap_sci_index((int16_t)calc_sci_index + (int16_t)delta);
+    if (constants_only) {
+        calc_sci_index = MATRIX_SCI_PI;
+    } else {
+        calc_sci_index = calc_wrap_sci_index((int16_t)calc_sci_index + (int16_t)delta);
+    }
+
+    if (constants_only && !calc_sci_is_constant(calc_sci_index)) {
+        calc_sci_index = MATRIX_SCI_PI;
+    }
+
     calc_sci_browsing = true;
     calc_sci_visible = true;
     calc_sci_blink_started_ms = timer_read32();
@@ -1372,6 +1403,99 @@ bool calc_mode_handle_keycode(uint16_t keycode) {
             return false;
     }
 
+    calc_render_display();
+    return true;
+}
+
+bool calc_mode_get_current_value_text(char *out, size_t out_size) {
+    if (!out || out_size == 0) {
+        return false;
+    }
+
+    const double value = calc_current_value();
+    if (calc_value_overflowed(value)) {
+        return false;
+    }
+
+    calc_format_value(value, out, out_size);
+    return true;
+}
+
+bool calc_mode_set_input_from_text(const char *text) {
+    if (!calc_mode_enabled || !text) {
+        return false;
+    }
+
+    const char *start = text;
+    while (*start && isspace((unsigned char)*start)) {
+        start++;
+    }
+
+    size_t len = strlen(start);
+    while (len > 0 && isspace((unsigned char)start[len - 1])) {
+        len--;
+    }
+
+    if (len == 0 || len >= sizeof(calc_input_text)) {
+        return false;
+    }
+
+    bool seen_digit = false;
+    bool seen_dot   = false;
+    uint8_t out_len = 0;
+
+    for (size_t i = 0; i < len; i++) {
+        char ch = start[i];
+
+        if (ch == ',') {
+            ch = '.';
+        }
+
+        if (ch == '-') {
+            if (i != 0) {
+                return false;
+            }
+            calc_input_text[out_len++] = ch;
+            continue;
+        }
+
+        if (ch == '.') {
+            if (seen_dot) {
+                return false;
+            }
+            seen_dot = true;
+            calc_input_text[out_len++] = ch;
+            continue;
+        }
+
+        if (ch < '0' || ch > '9') {
+            return false;
+        }
+
+        seen_digit = true;
+        calc_input_text[out_len++] = ch;
+    }
+
+    if (!seen_digit) {
+        return false;
+    }
+
+    calc_input_text[out_len] = '\0';
+    calc_input_text_len = out_len;
+    calc_input_rebuild_from_text();
+
+    if (!calc_input_active) {
+        return false;
+    }
+
+    calc_error = false;
+    calc_error_overflow = false;
+    calc_status_active = false;
+    calc_mem_preview_active = false;
+    calc_mem_preview_visible = false;
+    calc_last_eval_valid = false;
+    calc_last_sci_unary_valid = false;
+    calc_clear_scientific_selection();
     calc_render_display();
     return true;
 }
