@@ -9,10 +9,12 @@
 #include "matrix_symbols.h"
 #include "raw_hid.h"
 #include "timer.h"
+#include "analog.h"
 #include <stdio.h>
 #include <string.h>
 
 static bool ht16k33_ready;
+static bool segment_display_ready;
 static bool calc_startup_display_pending;
 static bool ck_mod_held;
 static bool ck_mod_interrupted;
@@ -21,6 +23,19 @@ static bool host_time_valid;
 static uint64_t host_time_base_secs;
 static uint32_t host_time_base_ms;
 static uint32_t host_time_last_render_secs;
+static uint8_t display_brightness = 15;
+static bool settings_text_valid;
+static char settings_text_last[16];
+static bool paste_request_pending;
+static bool paste_preview_active;
+static bool paste_preview_visible;
+static uint32_t paste_preview_started_ms;
+static char paste_preview_text[28];
+#ifdef BATTERY_ENABLE
+static bool settings_battery_mv_valid;
+static uint16_t settings_battery_mv;
+static uint32_t settings_battery_sampled_ms;
+#endif
 
 #define ______ KC_TRANSPARENT
 #define MASKED KC_NO
@@ -33,12 +48,109 @@ enum layer_names {
 };
 
 #define REPEAT_OP_FLASH_MS 300
+#define CK_MOD_SETTINGS_DELAY_MS 200
+#define SETTINGS_BATTERY_SAMPLE_MS 750
+#define PASTE_PREVIEW_BLINK_MS 120
 #define HOST_TIME_TAG_LEN 4
 #define HOST_TIME_PAYLOAD_LEN 12
 #define HOST_TIME_TZ_OFFSET_SECS (2 * 3600)
 #define RAW_HID_PACKET_LEN 32
 
 static void matrix_display_tick(bool force);
+static void segment_display_mod_setup(void);
+static void segment_display_paste_preview_tick(bool force);
+static void clear_paste_preview(bool refresh_display);
+
+#ifdef BATTERY_ENABLE
+static uint16_t settings_read_battery_mv(void) {
+    uint32_t raw = (uint32_t)analogReadPin(BATTERY_ADC_PIN);
+    uint32_t bat_mv = raw * BATTERY_ADC_REF_VOLTAGE_MV / (1UL << BATTERY_ADC_RESOLUTION);
+
+#    if BATTERY_VOLTAGE_DIVIDER_R1 > 0 && BATTERY_ADC_VOLTAGE_DIVIDER_R2 > 0
+    bat_mv = bat_mv * (BATTERY_VOLTAGE_DIVIDER_R1 + BATTERY_ADC_VOLTAGE_DIVIDER_R2) / BATTERY_ADC_VOLTAGE_DIVIDER_R2;
+#    endif
+
+    return (uint16_t)bat_mv;
+}
+
+static uint16_t settings_battery_mv_cached(void) {
+    if (!settings_battery_mv_valid || timer_elapsed32(settings_battery_sampled_ms) >= SETTINGS_BATTERY_SAMPLE_MS) {
+        settings_battery_mv = settings_read_battery_mv();
+        settings_battery_sampled_ms = timer_read32();
+        settings_battery_mv_valid = true;
+    }
+
+    return settings_battery_mv;
+}
+#endif
+
+static void apply_display_brightness(void) {
+    if (segment_display_ready) {
+        ht16k33_segment_display_set_brightness(display_brightness);
+    }
+
+    if (ht16k33_ready) {
+        ht16k33_matrix_set_brightness(display_brightness);
+    }
+}
+
+static bool ck_mod_settings_active(void) {
+    return ck_mod_held && timer_elapsed(ck_mod_pressed_at) >= CK_MOD_SETTINGS_DELAY_MS;
+}
+
+static void matrix_set_symbol_with_optional_underline(const char *symbol_visual, bool underline_on) {
+    if (!symbol_visual) {
+        set_matrix_visual(matrix_symbol_blank());
+        return;
+    }
+
+    if (!underline_on) {
+        set_matrix_visual(symbol_visual);
+        return;
+    }
+
+    static char visual_with_underline[256];
+    const char *white = "⚪";
+    const char *black = "⚫";
+    const size_t white_len = strlen(white);
+    const size_t black_len = strlen(black);
+
+    const char *p = symbol_visual;
+    char *out = visual_with_underline;
+    uint8_t cell = 0;
+
+    while (*p && cell < 64 && (size_t)(out - visual_with_underline) < sizeof(visual_with_underline) - 4) {
+        const char *token = NULL;
+        size_t token_len = 0;
+
+        if (strncmp(p, white, white_len) == 0) {
+            token = white;
+            token_len = white_len;
+        } else if (strncmp(p, black, black_len) == 0) {
+            token = black;
+            token_len = black_len;
+        } else {
+            break;
+        }
+
+        const bool underline_pixel = (cell == 63);
+        const char *write_token = underline_pixel ? white : token;
+        const size_t write_len = underline_pixel ? white_len : token_len;
+
+        memcpy(out, write_token, write_len);
+        out += write_len;
+        p += token_len;
+        cell++;
+    }
+
+    *out = '\0';
+
+    if (cell == 64) {
+        set_matrix_visual(visual_with_underline);
+    } else {
+        set_matrix_visual(symbol_visual);
+    }
+}
 
 static const uint8_t TAG_TIME[4]      = {'t', 'i', 'm', 'e'};
 static const uint8_t TAG_PASTE_REQ[4] = {'p', 'a', 's', 't'};
@@ -153,6 +265,10 @@ static uint64_t host_time_current_secs(void) {
 }
 
 static void segment_display_time_tick(bool force) {
+    if (!segment_display_ready) {
+        return;
+    }
+
     if (!host_time_valid) {
         (void)force;
         (void)ht16k33_segment_display_write_text(" WAIT TIME ");
@@ -179,6 +295,141 @@ static void segment_display_time_tick(bool force) {
     host_time_last_render_secs = render_key;
 }
 
+static void segment_display_mod_setup(void) {
+    if (!segment_display_ready) {
+        return;
+    }
+
+    char text[16];
+    const char *angle_mode = calc_mode_angle_mode_is_degrees() ? "DEG" : "RAD";
+#ifdef BATTERY_ENABLE
+    const uint16_t bat_mv = settings_battery_mv_cached();
+    (void)snprintf(text, sizeof(text), "%s %u.%02uV", angle_mode, (unsigned int)(bat_mv / 1000U), (unsigned int)((bat_mv % 1000U) / 10U));
+#else
+    (void)snprintf(text, sizeof(text), "%s", angle_mode);
+#endif
+
+    if (settings_text_valid && strncmp(settings_text_last, text, sizeof(settings_text_last)) == 0) {
+        return;
+    }
+
+    (void)ht16k33_segment_display_write_text(text);
+    strncpy(settings_text_last, text, sizeof(settings_text_last) - 1);
+    settings_text_last[sizeof(settings_text_last) - 1] = '\0';
+    settings_text_valid = true;
+}
+
+static uint8_t segment_pack_slots_local(const char *text, char *chars, bool *dots, uint8_t max_slots) {
+    if (!text || !chars || !dots || max_slots == 0) {
+        return 0;
+    }
+
+    uint8_t index = 0;
+    for (const char *p = text; *p && index < max_slots; p++) {
+        if (*p == '.' && index > 0) {
+            dots[index - 1] = true;
+            continue;
+        }
+
+        chars[index] = *p;
+        dots[index]  = false;
+        index++;
+    }
+
+    return index;
+}
+
+static void segment_slots_to_text_local(const char *chars, const bool *dots, uint8_t slots, char *out, size_t out_size) {
+    if (!chars || !dots || !out || out_size == 0) {
+        return;
+    }
+
+    size_t pos = 0;
+    for (uint8_t i = 0; i < slots && pos < out_size - 1; i++) {
+        out[pos++] = chars[i];
+        if (dots[i] && pos < out_size - 1) {
+            out[pos++] = '.';
+        }
+    }
+    out[pos] = '\0';
+}
+
+static void segment_format_paste_preview_text(const char *value_text, char *out, size_t out_size) {
+    if (!value_text || !out || out_size == 0) {
+        return;
+    }
+
+    char render_chars[12] = {' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '};
+    bool render_dots[12]  = {0};
+
+    render_chars[0] = 'C';
+    render_chars[1] = 'B';
+    render_chars[2] = ' ';
+
+    char value_chars[12] = {' '};
+    bool value_dots[12]  = {0};
+    const uint8_t value_slots = segment_pack_slots_local(value_text, value_chars, value_dots, 12);
+    const uint8_t available_slots = 9;
+    const uint8_t copy_slots = (value_slots > available_slots) ? available_slots : value_slots;
+    const uint8_t src_start = 0;
+
+    uint8_t start_slot = (copy_slots < 12) ? (uint8_t)(12 - copy_slots) : 0;
+    if (start_slot < 3) {
+        start_slot = 3;
+    }
+
+    for (uint8_t i = 0; i < copy_slots; i++) {
+        const uint8_t dst = (uint8_t)(start_slot + i);
+        if (dst >= 12) {
+            break;
+        }
+
+        const uint8_t src = (uint8_t)(src_start + i);
+        render_chars[dst] = value_chars[src];
+        render_dots[dst]  = value_dots[src];
+    }
+
+    segment_slots_to_text_local(render_chars, render_dots, 12, out, out_size);
+}
+
+static void segment_display_paste_preview_tick(bool force) {
+    if (!segment_display_ready || !paste_preview_active) {
+        return;
+    }
+
+    const uint32_t elapsed = timer_elapsed32(paste_preview_started_ms);
+    const bool visible = ((elapsed / PASTE_PREVIEW_BLINK_MS) % 2U) == 0U;
+    if (!force && visible == paste_preview_visible) {
+        return;
+    }
+
+    paste_preview_visible = visible;
+    if (visible) {
+        char text[32];
+        segment_format_paste_preview_text(paste_preview_text, text, sizeof(text));
+        (void)ht16k33_segment_display_write_text(text);
+    } else {
+        (void)ht16k33_segment_display_write_text("            ");
+    }
+}
+
+static void clear_paste_preview(bool refresh_display) {
+    const bool was_active = paste_preview_active;
+    paste_request_pending = false;
+    paste_preview_active = false;
+    paste_preview_visible = false;
+
+    if (!refresh_display || !was_active) {
+        return;
+    }
+
+    if (calc_mode_is_enabled()) {
+        calc_mode_refresh_display();
+    } else {
+        segment_display_time_tick(true);
+    }
+}
+
 void raw_hid_receive(uint8_t *data, uint8_t length) {
     const int16_t input_tag_offset = raw_hid_find_tag(data, length, TAG_INPUT_VAL);
     if (input_tag_offset >= 0) {
@@ -199,7 +450,15 @@ void raw_hid_receive(uint8_t *data, uint8_t length) {
                     calc_mode_toggle();
                 }
 
-                if (calc_mode_set_input_from_text(input_text)) {
+                if (paste_request_pending) {
+                    memcpy(paste_preview_text, input_text, out_len + 1);
+                    paste_preview_active = true;
+                    paste_preview_visible = false;
+                    paste_preview_started_ms = timer_read32();
+                    paste_request_pending = false;
+                    segment_display_paste_preview_tick(true);
+                    matrix_display_tick(true);
+                } else if (calc_mode_set_input_from_text(input_text)) {
                     matrix_display_tick(true);
                 }
             }
@@ -217,7 +476,7 @@ void raw_hid_receive(uint8_t *data, uint8_t length) {
     host_time_base_ms = timer_read32();
     host_time_last_render_secs = UINT32_MAX;
 
-    if (!calc_mode_is_enabled()) {
+    if (!calc_mode_is_enabled() && !ck_mod_settings_active()) {
         segment_display_time_tick(true);
     }
 }
@@ -236,8 +495,18 @@ static void matrix_display_tick(bool force) {
         const uint8_t sci_idx = calc_mode_scientific_matrix_symbol();
         if (sci_idx != MATRIX_SYMBOL_INVALID) {
             if (force || (int8_t)sci_idx != last_calc_idx) {
-                set_matrix_visual(matrix_symbol_get(sci_idx));
+                matrix_set_symbol_with_optional_underline(
+                    matrix_symbol_get(sci_idx),
+                    calc_mode_scientific_underline_visible()
+                );
                 last_calc_idx = (int8_t)sci_idx;
+            }
+
+            static bool last_sci_underline_on;
+            const bool underline_on = calc_mode_scientific_underline_visible();
+            if (underline_on != last_sci_underline_on) {
+                matrix_set_symbol_with_optional_underline(matrix_symbol_get(sci_idx), underline_on);
+                last_sci_underline_on = underline_on;
             }
             return;
         }
@@ -315,6 +584,7 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
         /**/          KC_P0,       KC_PDOT,                                    KC_DEL,   CK_MEM,   CK_PST,   CK_CLR   /**/
         /**|  └──────────────────┘└────────┘└────────┘                       └────────┘└────────┘└────────┘└────────┘     |**/
     ),
+    
 
     [_FL] = LAYOUT_numpad_4x4(
         /**|  ┌────────┐┌────────┐┌────────┐┌────────┐                       ┌────────┐┌────────┐┌──────────────────┐     |**/
@@ -337,35 +607,70 @@ void keyboard_post_init_user(void) {
     rgblight_enable_noeeprom();
     rgblight_mode_noeeprom(RGBLIGHT_MODE_RAINBOW_MOOD);
 
+    // Calculator mode must be available even without host or segment display.
+    calc_mode_init();
+    calc_startup_display_pending = true;
+    host_time_last_render_secs = UINT32_MAX;
+
     if (ht16k33_segment_display_init()) {
-        ht16k33_segment_display_set_brightness(15);
+        segment_display_ready = true;
+        apply_display_brightness();
         ht16k33_segment_display_stop_scroll();
-        calc_mode_init();
-        calc_startup_display_pending = true;
-        host_time_last_render_secs = UINT32_MAX;
+        calc_mode_set_render_suppressed(false);
         if (!calc_mode_is_enabled()) {
             segment_display_time_tick(true);
         }
+    } else {
+        // Avoid repeated I2C writes when segment display is unavailable.
+        calc_mode_set_render_suppressed(true);
     }
 
     ht16k33_ready = ht16k33_matrix_init();
 
     if (ht16k33_ready) {
         ht16k33_matrix_set_rotation(HT16K33_ROTATION_180);
-        ht16k33_matrix_set_brightness(15);
+        apply_display_brightness();
         matrix_display_tick(true);
     }
 }
 
 void matrix_scan_user(void) {
+    static bool calc_render_blocked;
+    static bool settings_display_visible;
+
     if (calc_startup_display_pending && calc_mode_is_enabled()) {
         calc_mode_refresh_display();
         calc_startup_display_pending = false;
     }
 
+    const bool settings_active = ck_mod_settings_active();
+    const bool suppress_calc_render = settings_active || paste_preview_active || !segment_display_ready;
+    if (suppress_calc_render != calc_render_blocked) {
+        calc_render_blocked = suppress_calc_render;
+        calc_mode_set_render_suppressed(suppress_calc_render);
+        if (!suppress_calc_render && calc_mode_is_enabled()) {
+            calc_mode_refresh_display();
+        }
+    }
+
     calc_mode_tick();
-    if (!calc_mode_is_enabled()) {
+    if (settings_active) {
+        if (!settings_display_visible
+#ifdef BATTERY_ENABLE
+            || timer_elapsed32(settings_battery_sampled_ms) >= SETTINGS_BATTERY_SAMPLE_MS
+#endif
+        ) {
+            segment_display_mod_setup();
+            settings_display_visible = true;
+        }
+    } else if (paste_preview_active) {
+        settings_display_visible = false;
+        segment_display_paste_preview_tick(false);
+    } else if (!calc_mode_is_enabled()) {
+        settings_display_visible = false;
         segment_display_time_tick(false);
+    } else {
+        settings_display_visible = false;
     }
     matrix_display_tick(false);
 }
@@ -373,6 +678,11 @@ void matrix_scan_user(void) {
 bool process_record_user(uint16_t keycode, keyrecord_t *record) {
     if (ck_mod_held && keycode != CK_MOD && record->event.pressed) {
         ck_mod_interrupted = true;
+    }
+
+    if (record->event.pressed && paste_preview_active && (keycode == CK_CLR || keycode == KC_DEL)) {
+        clear_paste_preview(true);
+        return false;
     }
 
     if (keycode == CK_MEM) {
@@ -387,7 +697,21 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
             matrix_display_tick(true);
         }
 
+        if (paste_preview_active) {
+            char confirmed_text[sizeof(paste_preview_text)];
+            memcpy(confirmed_text, paste_preview_text, sizeof(confirmed_text));
+            clear_paste_preview(false);
+            (void)calc_mode_set_input_from_text(confirmed_text);
+            matrix_display_tick(true);
+            return false;
+        }
+
+        if (paste_request_pending) {
+            return false;
+        }
+
         raw_hid_send_packet(TAG_PASTE_REQ, NULL);
+        paste_request_pending = true;
         return false;
     }
 
@@ -420,6 +744,7 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
         ck_mod_held = false;
 
         if (was_tap) {
+            clear_paste_preview(false);
             calc_mode_toggle();
             if (calc_mode_is_enabled()) {
                 calc_mode_refresh_display();
@@ -428,6 +753,20 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
                 segment_display_time_tick(true);
                 matrix_display_tick(true);                
             }
+        } else {
+            if (calc_mode_is_enabled()) {
+                calc_mode_refresh_display();
+            } else {
+                segment_display_time_tick(true);
+            }
+        }
+        return false;
+    }
+
+    if (ck_mod_held && keycode == KC_F1) {
+        if (record->event.pressed) {
+            calc_mode_cycle_angle_mode();
+            segment_display_mod_setup();
         }
         return false;
     }
@@ -471,6 +810,24 @@ bool encoder_update_user(uint8_t index, bool clockwise) {
 
     half_step_phase = !half_step_phase;
     if (!half_step_phase) {
+        return false;
+    }
+
+    if (ck_mod_held) {
+        if (clockwise) {
+            if (display_brightness < 15) {
+                display_brightness++;
+            }
+        } else {
+            if (display_brightness > 0) {
+                display_brightness--;
+            }
+        }
+
+        apply_display_brightness();
+        if (ck_mod_settings_active()) {
+            segment_display_mod_setup();
+        }
         return false;
     }
 

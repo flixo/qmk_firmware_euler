@@ -28,10 +28,14 @@ static uint8_t ht16k33_pack_slots(const char *text, char *chars, bool *dots, uin
     }
 
     uint8_t index = 0;
-    for (const char *p = text; *p && index < max_slots; p++) {
+    for (const char *p = text; *p; p++) {
         if (*p == '.' && index > 0) {
             dots[index - 1] = true;
             continue;
+        }
+
+        if (index >= max_slots) {
+            break;
         }
 
         chars[index] = *p;

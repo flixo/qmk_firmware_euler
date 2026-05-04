@@ -67,9 +67,9 @@ static const char *const matrix_subtract_symbol =
     // Power of
 static const char *const matrix_power_symbol =
     "⚫⚫⚫⚫⚫⚫⚫⚫"
-    "⚫⚫⚫⚪⚫⚫⚫⚫"
-    "⚫⚫⚪⚫⚪⚫⚫⚫"
-    "⚫⚪⚫⚫⚫⚪⚫⚫"
+    "⚫⚫⚫⚫⚪⚫⚫⚫"
+    "⚫⚫⚫⚪⚫⚪⚫⚫"
+    "⚫⚫⚪⚫⚫⚫⚪⚫"
     "⚫⚫⚫⚫⚫⚫⚫⚫"
     "⚫⚫⚫⚫⚫⚫⚫⚫"
     "⚫⚫⚫⚫⚫⚫⚫⚫"
@@ -78,7 +78,7 @@ static const char *const matrix_power_symbol =
     // Square root
 static const char *const matrix_square_root_symbol =
     "⚫⚫⚫⚫⚫⚫⚫⚫"
-    "⚫⚫⚫⚫⚪⚪⚪⚪"
+    "⚫⚫⚫⚫⚪⚪⚪⚫"
     "⚫⚪⚫⚫⚪⚫⚫⚫"
     "⚫⚫⚪⚫⚪⚫⚫⚫"
     "⚫⚫⚫⚪⚪⚫⚫⚫"
@@ -89,78 +89,79 @@ static const char *const matrix_square_root_symbol =
     // Pi
 static const char *const matrix_pi_symbol =
     "⚫⚫⚫⚫⚫⚫⚫⚫"
-    "⚫⚪⚪⚪⚪⚪⚫⚫"
-    "⚫⚫⚪⚫⚪⚫⚫⚫"
-    "⚫⚫⚪⚫⚪⚫⚫⚫"
-    "⚫⚫⚪⚫⚪⚫⚫⚫"
+    "⚫⚪⚪⚪⚪⚪⚪⚫"
     "⚫⚫⚪⚫⚫⚪⚫⚫"
+    "⚫⚫⚪⚫⚫⚪⚫⚫"
+    "⚫⚫⚪⚫⚫⚪⚫⚫"
+    "⚫⚫⚪⚫⚫⚫⚪⚫"
     "⚫⚫⚫⚫⚫⚫⚫⚫"
     "⚫⚫⚫⚫⚫⚫⚫⚫";
 
     // Sine
 static const char *const matrix_sine_symbol =
-    "⚫⚫⚫⚫⚫⚫⚫⚫"
-    "⚫⚫⚫⚫⚪⚫⚫⚫"
+    "⚫⚫⚫⚪⚪⚪⚫⚫"
     "⚫⚫⚪⚫⚪⚫⚪⚫"
     "⚫⚪⚫⚫⚪⚫⚫⚪"
     "⚫⚪⚫⚫⚪⚫⚫⚪"
-    "⚫⚫⚫⚫⚫⚫⚫⚫"
-    "⚫⚫⚫⚫⚫⚫⚫⚫"
+    "⚫⚪⚫⚫⚫⚫⚫⚪"
+    "⚫⚫⚪⚫⚫⚫⚪⚫"
+    "⚫⚫⚫⚪⚪⚪⚫⚫"
     "⚫⚫⚫⚫⚫⚫⚫⚫";
 
     // Cosine
 static const char *const matrix_cosine_symbol =
-    "⚫⚫⚫⚫⚫⚫⚫⚫"
     "⚫⚫⚫⚪⚪⚪⚫⚫"
     "⚫⚫⚪⚫⚫⚫⚪⚫"
-    "⚫⚫⚫⚫⚫⚫⚫⚫"
-    "⚫⚪⚪⚪⚪⚪⚪⚪"
-    "⚫⚫⚫⚫⚫⚫⚫⚫"
-    "⚫⚫⚫⚫⚫⚫⚫⚫"
+    "⚫⚪⚫⚫⚫⚫⚫⚪"
+    "⚫⚪⚫⚫⚪⚪⚪⚪"
+    "⚫⚪⚫⚫⚫⚫⚫⚪"
+    "⚫⚫⚪⚫⚫⚫⚪⚫"
+    "⚫⚫⚫⚪⚪⚪⚫⚫"
     "⚫⚫⚫⚫⚫⚫⚫⚫";
 
     // Secant
 static const char *const matrix_secant_symbol =
-    "⚫⚫⚫⚫⚫⚫⚫⚫"
     "⚫⚫⚫⚪⚪⚪⚫⚪"
     "⚫⚫⚪⚫⚫⚫⚪⚫"
     "⚫⚪⚫⚫⚫⚪⚫⚪"
     "⚫⚪⚫⚫⚪⚫⚫⚪"
-    "⚫⚫⚫⚪⚫⚫⚫⚫"
-    "⚫⚫⚫⚫⚫⚫⚫⚫"
+    "⚫⚪⚫⚫⚫⚫⚫⚪"
+    "⚫⚫⚪⚫⚫⚫⚪⚫"
+    "⚫⚫⚫⚪⚪⚪⚫⚫"
     "⚫⚫⚫⚫⚫⚫⚫⚫";
 
     // Cosecant
 static const char *const matrix_cosecant_symbol =
-    "⚫⚫⚫⚫⚫⚫⚫⚫"
     "⚫⚪⚫⚪⚪⚪⚫⚫"
     "⚫⚫⚪⚫⚫⚫⚪⚫"
     "⚫⚪⚫⚪⚫⚫⚫⚪"
     "⚫⚪⚫⚫⚪⚫⚫⚪"
-    "⚫⚫⚫⚫⚫⚪⚫⚫"
-    "⚫⚫⚫⚫⚫⚫⚫⚫"
+    "⚫⚪⚫⚫⚫⚫⚫⚪"
+    "⚫⚫⚪⚫⚫⚫⚪⚫"
+    "⚫⚫⚫⚪⚪⚪⚫⚫"
     "⚫⚫⚫⚫⚫⚫⚫⚫";
 
     // Tangent
 static const char *const matrix_tangent_symbol =
-    "⚫⚫⚫⚫⚫⚫⚫⚫"
     "⚫⚪⚪⚪⚪⚪⚪⚪"
-    "⚫⚫⚫⚪⚪⚪⚫⚫"
     "⚫⚫⚪⚫⚫⚫⚪⚫"
     "⚫⚪⚫⚫⚫⚫⚫⚪"
     "⚫⚪⚫⚫⚫⚫⚫⚪"
+    "⚫⚪⚫⚫⚫⚫⚫⚪"
+    "⚫⚫⚪⚫⚫⚫⚪⚫"
+    "⚫⚫⚫⚪⚪⚪⚫⚫"
     "⚫⚫⚫⚫⚫⚫⚫⚫"
     "⚫⚫⚫⚫⚫⚫⚫⚫";
 
     // Cotangent
 static const char *const matrix_cotangent_symbol =
-    "⚫⚫⚫⚫⚫⚫⚫⚫"
+    "⚫⚫⚫⚪⚪⚪⚫⚫"
+    "⚫⚫⚪⚫⚫⚫⚪⚫"
+    "⚫⚪⚫⚫⚫⚫⚫⚪"
     "⚫⚪⚫⚫⚫⚫⚫⚪"
     "⚫⚪⚫⚫⚫⚫⚫⚪"
     "⚫⚫⚪⚫⚫⚫⚪⚫"
-    "⚫⚫⚫⚪⚪⚪⚫⚫"
     "⚫⚪⚪⚪⚪⚪⚪⚪"
-    "⚫⚫⚫⚫⚫⚫⚫⚫"
     "⚫⚫⚫⚫⚫⚫⚫⚫";
 
     // Hypot

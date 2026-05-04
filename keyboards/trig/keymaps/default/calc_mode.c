@@ -67,9 +67,13 @@
 #define CALC_MEM_BLINK_MS      120
 #define CALC_SCI_BLINK_MS      440
 #define CALC_STATUS_MSG_MS     500
+#define CALC_PI                3.14159265358979323846
 
 /* Core calculator runtime state. */
 static bool    calc_mode_enabled;
+static bool    calc_render_suppressed;
+static bool    calc_last_segment_text_valid;
+static char    calc_last_segment_text[32];
 static bool    calc_error;
 static bool    calc_error_overflow;
 static bool    calc_input_active;
@@ -104,6 +108,7 @@ static char    calc_status_text[16];
 static bool    calc_sci_active;
 static bool    calc_sci_browsing;
 static bool    calc_sci_visible;
+static bool    calc_angle_mode_degrees;
 static uint8_t calc_sci_index;
 static uint32_t calc_sci_blink_started_ms;
 static bool    calc_sci_label_active;
@@ -120,6 +125,24 @@ static double calc_round_for_display(double value);
 static uint8_t calc_pack_slots_local(const char *text, char *chars, bool *dots, uint8_t max_slots);
 static void calc_slots_to_text(const char *chars, const bool *dots, uint8_t slots, char *out, size_t out_size);
 static void calc_clear_scientific_selection(void);
+static double calc_angle_input_to_radians(double value);
+static void calc_write_segment_text_if_changed(const char *text);
+
+static void calc_write_segment_text_if_changed(const char *text) {
+    if (!text) {
+        return;
+    }
+
+    if (calc_last_segment_text_valid && strncmp(calc_last_segment_text, text, sizeof(calc_last_segment_text)) == 0) {
+        return;
+    }
+
+    (void)ht16k33_segment_display_write_text(text);
+
+    strncpy(calc_last_segment_text, text, sizeof(calc_last_segment_text) - 1);
+    calc_last_segment_text[sizeof(calc_last_segment_text) - 1] = '\0';
+    calc_last_segment_text_valid = true;
+}
 
 /* Scientific label text shown while browsing a function. */
 static const char *calc_scientific_label(uint8_t sci_index) {
@@ -185,13 +208,32 @@ static void calc_overlay_left_label(const char *label, const char *value_text, c
     }
 
     // Always leave two visual spaces after the label.
-    for (uint8_t i = 0; i < 2; i++) {
+    const uint8_t pad_slots = 2;
+    for (uint8_t i = 0; i < pad_slots; i++) {
         const uint8_t dst = (uint8_t)(label_len + i);
         if (dst >= 12) {
             break;
         }
         render_chars[dst] = ' ';
         render_dots[dst]  = false;
+    }
+
+    // If left-side label area clips right-aligned value, mark the seam as
+    // truncated: dot the last label char and the label padding spaces.
+    const uint8_t reserved = (label_len + pad_slots < 12) ? (uint8_t)(label_len + pad_slots) : 12;
+    const bool value_truncated = (value_slots > (uint8_t)(12 - reserved)) || (start_slot < reserved);
+    if (value_truncated) {
+        if (label_len > 0) {
+            render_dots[label_len - 1] = true;
+        }
+
+        for (uint8_t i = 0; i < pad_slots; i++) {
+            const uint8_t dst = (uint8_t)(label_len + i);
+            if (dst >= 12) {
+                break;
+            }
+            render_dots[dst] = true;
+        }
     }
 
     calc_slots_to_text(render_chars, render_dots, 12, out, out_size);
@@ -220,6 +262,7 @@ static bool calc_set_math_error(void) {
 /* Applies scientific functions that immediately evaluate current value. */
 static bool calc_apply_unary_scientific(uint8_t sci_index) {
     const double input = calc_current_value();
+    const double angle_input = calc_angle_input_to_radians(input);
     double       result = 0.0;
 
     switch (sci_index) {
@@ -230,13 +273,13 @@ static bool calc_apply_unary_scientific(uint8_t sci_index) {
             result = sqrt(input);
             break;
         case MATRIX_SCI_SIN:
-            result = sin(input);
+            result = sin(angle_input);
             break;
         case MATRIX_SCI_COS:
-            result = cos(input);
+            result = cos(angle_input);
             break;
         case MATRIX_SCI_SEC: {
-            const double c = cos(input);
+            const double c = cos(angle_input);
             if (fabs(c) < 0.000000000001) {
                 return calc_set_math_error();
             }
@@ -244,7 +287,7 @@ static bool calc_apply_unary_scientific(uint8_t sci_index) {
             break;
         }
         case MATRIX_SCI_CSC: {
-            const double s = sin(input);
+            const double s = sin(angle_input);
             if (fabs(s) < 0.000000000001) {
                 return calc_set_math_error();
             }
@@ -252,14 +295,14 @@ static bool calc_apply_unary_scientific(uint8_t sci_index) {
             break;
         }
         case MATRIX_SCI_TAN:
-            result = tan(input);
+            result = tan(angle_input);
             break;
         case MATRIX_SCI_COT: {
-            const double s = sin(input);
+            const double s = sin(angle_input);
             if (fabs(s) < 0.000000000001) {
                 return calc_set_math_error();
             }
-            result = cos(input) / s;
+            result = cos(angle_input) / s;
             break;
         }
         case MATRIX_SCI_FACT: {
@@ -361,6 +404,14 @@ static void calc_clear_scientific_selection(void) {
     calc_sci_label_active = false;
 }
 
+static double calc_angle_input_to_radians(double value) {
+    if (!calc_angle_mode_degrees) {
+        return value;
+    }
+
+    return value * (CALC_PI / 180.0);
+}
+
 /* Packs display text into character slots where '.' attaches to previous slot. */
 static uint8_t calc_pack_slots_local(const char *text, char *chars, bool *dots, uint8_t max_slots) {
     if (!text || !chars || !dots || max_slots == 0) {
@@ -432,7 +483,7 @@ static void calc_render_memory_preview_display(void) {
 
     char text[32];
     calc_slots_to_text(preview_chars, preview_dots, 12, text, sizeof(text));
-    (void)ht16k33_segment_display_write_text(text);
+    calc_write_segment_text_if_changed(text);
 }
 
 static int8_t calc_bank_index_from_keycode(uint16_t keycode) {
@@ -869,16 +920,20 @@ static void calc_format_value(double value, char *out, size_t out_size) {
 
 /* Main segment rendering path with status/error/memory/input priorities. */
 static void calc_render_display(void) {
+    if (calc_render_suppressed) {
+        return;
+    }
+
     if (calc_status_active) {
-        (void)ht16k33_segment_display_write_text(calc_status_text);
+        calc_write_segment_text_if_changed(calc_status_text);
         return;
     }
 
     if (calc_error) {
         if (calc_error_overflow) {
-            (void)ht16k33_segment_display_write_text("ERR OVERFLOW");
+            calc_write_segment_text_if_changed("ERR OVERFLOW");
         } else {
-            (void)ht16k33_segment_display_write_text("CALC  ERR");
+            calc_write_segment_text_if_changed("CALC  ERR");
         }
         return;
     }
@@ -888,7 +943,7 @@ static void calc_render_display(void) {
         return;
     }
 
-    const bool show_sci_label = calc_sci_label_active && (!calc_sci_browsing || calc_sci_visible);
+    const bool show_sci_label = calc_sci_label_active;
 
     if (calc_input_active && calc_input_text_len > 0) {
         char text[24];
@@ -897,7 +952,7 @@ static void calc_render_display(void) {
         } else {
             calc_right_align_for_segment(calc_input_text, text, sizeof(text));
         }
-        (void)ht16k33_segment_display_write_text(text);
+        calc_write_segment_text_if_changed(text);
         return;
     }
 
@@ -905,7 +960,7 @@ static void calc_render_display(void) {
     if (calc_value_overflowed(display_value)) {
         calc_error          = true;
         calc_error_overflow = true;
-        (void)ht16k33_segment_display_write_text("ERR OVERFLOW");
+        calc_write_segment_text_if_changed("ERR OVERFLOW");
         return;
     }
 
@@ -918,7 +973,7 @@ static void calc_render_display(void) {
     } else {
         calc_right_align_for_segment(value, text, sizeof(text));
     }
-    (void)ht16k33_segment_display_write_text(text);
+    calc_write_segment_text_if_changed(text);
 }
 
 /* Shared operator evaluator for basic ops and pending scientific binary ops. */
@@ -1109,6 +1164,13 @@ void calc_mode_refresh_display(void) {
     }
 }
 
+void calc_mode_set_render_suppressed(bool suppressed) {
+    if (calc_render_suppressed != suppressed) {
+        calc_last_segment_text_valid = false;
+    }
+    calc_render_suppressed = suppressed;
+}
+
 void calc_mode_tick(void) {
     if (!calc_mode_enabled) {
         return;
@@ -1120,13 +1182,8 @@ void calc_mode_tick(void) {
     }
 
     if (calc_sci_browsing) {
-        // Segment label and matrix icon share this same visibility phase.
-        const bool prior_visible = calc_sci_visible;
         const uint32_t elapsed = timer_elapsed32(calc_sci_blink_started_ms);
         calc_sci_visible = ((elapsed / CALC_SCI_BLINK_MS) % 2U) == 0U;
-        if (prior_visible != calc_sci_visible && calc_sci_label_active) {
-            calc_render_display();
-        }
     }
 
     if (!calc_mem_preview_active) {
@@ -1140,6 +1197,14 @@ void calc_mode_tick(void) {
         calc_mem_preview_visible = visible;
         calc_render_display();
     }
+}
+
+void calc_mode_cycle_angle_mode(void) {
+    calc_angle_mode_degrees = !calc_angle_mode_degrees;
+}
+
+bool calc_mode_angle_mode_is_degrees(void) {
+    return calc_angle_mode_degrees;
 }
 
 void calc_mode_set_mem_modifier(bool held) {
@@ -1224,14 +1289,17 @@ bool calc_mode_browse_scientific(int8_t delta) {
     // When waiting for rhs of a binary operator, only constant insertions are
     // valid from scientific browse (currently PI).
     const bool constants_only = (calc_pending_op != 0);
+    bool activated_now = false;
 
     if (!calc_sci_active) {
         calc_sci_active = true;
+        activated_now = true;
+        calc_sci_index = constants_only ? MATRIX_SCI_PI : MATRIX_SCI_POWER;
     }
 
     if (constants_only) {
         calc_sci_index = MATRIX_SCI_PI;
-    } else {
+    } else if (!activated_now) {
         calc_sci_index = calc_wrap_sci_index((int16_t)calc_sci_index + (int16_t)delta);
     }
 
@@ -1290,11 +1358,11 @@ uint8_t calc_mode_scientific_matrix_symbol(void) {
         return MATRIX_SYMBOL_INVALID;
     }
 
-    if (calc_sci_browsing && !calc_sci_visible) {
-        return MATRIX_SYMBOL_INVALID;
-    }
-
     return matrix_symbol_for_scientific(calc_sci_index);
+}
+
+bool calc_mode_scientific_underline_visible(void) {
+    return calc_mode_enabled && calc_sci_browsing && calc_sci_visible;
 }
 
 bool calc_mode_handle_keycode(uint16_t keycode) {
@@ -1378,7 +1446,11 @@ bool calc_mode_handle_keycode(uint16_t keycode) {
             calc_handle_operator('/');
             break;
         case KC_PENT:
-            calc_handle_equals();
+            if (calc_sci_active || calc_sci_browsing || calc_sci_label_active) {
+                (void)calc_mode_confirm_scientific();
+            } else {
+                calc_handle_equals();
+            }
             break;
         case CK_SEL:
             (void)calc_mode_confirm_scientific();

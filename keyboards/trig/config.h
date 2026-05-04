@@ -3,6 +3,9 @@
 #define RP2040_BOOTLOADER_DOUBLE_TAP_RESET
 #define RP2040_BOOTLOADER_DOUBLE_TAP_TIMEOUT 500U // milliseconds
 
+// Allow keyboard task startup without waiting for USB host presence.
+#define NO_USB_STARTUP_CHECK
+
 #define USB_DEVICE_NAME "Trig"
 #define MANUFACTURER "Jens Nomtak"
 #define PRODUCT "Trig"
