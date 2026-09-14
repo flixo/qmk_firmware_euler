@@ -7,8 +7,6 @@
 #define NO_USB_STARTUP_CHECK
 
 #define USB_DEVICE_NAME "Trig"
-#define MANUFACTURER "Jens Nomtak"
-#define PRODUCT "Trig"
 // HT16K33 I2C defaults for RP2040; adjust pins if your wiring is different.
 #ifndef I2C_DRIVER
 #    define I2C_DRIVER I2CD0

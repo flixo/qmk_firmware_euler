@@ -1138,6 +1138,7 @@ static void calc_handle_equals(void) {
 void calc_mode_init(void) {
     calc_mode_enabled = true;
     calc_reset_all();
+    calc_last_segment_text_valid = false;
     calc_render_display();
 }
 
@@ -1147,6 +1148,8 @@ bool calc_mode_is_enabled(void) {
 
 void calc_mode_toggle(void) {
     calc_mode_enabled = !calc_mode_enabled;
+    calc_last_segment_text_valid = false;
+
     if (calc_mode_enabled) {
         calc_reset_all();
         calc_render_display();

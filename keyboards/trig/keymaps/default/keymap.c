@@ -17,7 +17,6 @@ static bool ht16k33_ready;
 static bool segment_display_ready;
 static bool calc_startup_display_pending;
 static bool ck_mod_held;
-static bool ck_mod_interrupted;
 static uint16_t ck_mod_pressed_at;
 static bool host_time_valid;
 static uint64_t host_time_base_secs;
@@ -676,10 +675,6 @@ void matrix_scan_user(void) {
 }
 
 bool process_record_user(uint16_t keycode, keyrecord_t *record) {
-    if (ck_mod_held && keycode != CK_MOD && record->event.pressed) {
-        ck_mod_interrupted = true;
-    }
-
     if (record->event.pressed && paste_preview_active && (keycode == CK_CLR || keycode == KC_DEL)) {
         clear_paste_preview(true);
         return false;
@@ -732,7 +727,6 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
     if (keycode == CK_MOD) {
         if (record->event.pressed) {
             ck_mod_held = true;
-            ck_mod_interrupted = false;
             ck_mod_pressed_at = timer_read();
             layer_on(_FL);
             return false;
@@ -740,7 +734,7 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
 
         layer_off(_FL);
 
-        const bool was_tap = !ck_mod_interrupted && (timer_elapsed(ck_mod_pressed_at) < TAPPING_TERM);
+        const bool was_tap = timer_elapsed(ck_mod_pressed_at) < CK_MOD_SETTINGS_DELAY_MS;
         ck_mod_held = false;
 
         if (was_tap) {
