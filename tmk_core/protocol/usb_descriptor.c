@@ -449,6 +449,46 @@ const USB_Descriptor_HIDReport_Datatype_t PROGMEM SharedReport[] = {
 };
 #endif
 
+#ifdef JOYSTICK2_ENABLE
+const USB_Descriptor_HIDReport_Datatype_t PROGMEM Joystick2Report[] = {
+    HID_RI_USAGE_PAGE(8, 0x01),     // Generic Desktop
+    HID_RI_USAGE(8, 0x04),          // Joystick
+    HID_RI_COLLECTION(8, 0x01),     // Application
+        HID_RI_COLLECTION(8, 0x00), // Physical
+            HID_RI_USAGE_PAGE(8, 0x01), // Generic Desktop
+            HID_RI_USAGE(8, 0x30),      // X
+#    if JOYSTICK2_AXIS_COUNT > 1
+            HID_RI_USAGE(8, 0x31),      // Y
+#    endif
+#    if JOYSTICK2_AXIS_COUNT > 2
+            HID_RI_USAGE(8, 0x32),      // Z
+#    endif
+#    if JOYSTICK2_AXIS_COUNT > 3
+            HID_RI_USAGE(8, 0x33),      // Rx
+#    endif
+#    if JOYSTICK2_AXIS_COUNT > 4
+            HID_RI_USAGE(8, 0x34),      // Ry
+#    endif
+#    if JOYSTICK2_AXIS_COUNT > 5
+            HID_RI_USAGE(8, 0x35),      // Rz
+#    endif
+#    if JOYSTICK2_AXIS_RESOLUTION == 8
+            HID_RI_LOGICAL_MINIMUM(8, -JOYSTICK2_MAX_VALUE),
+            HID_RI_LOGICAL_MAXIMUM(8, JOYSTICK2_MAX_VALUE),
+            HID_RI_REPORT_COUNT(8, JOYSTICK2_AXIS_COUNT),
+            HID_RI_REPORT_SIZE(8, 0x08),
+#    else
+            HID_RI_LOGICAL_MINIMUM(16, -JOYSTICK2_MAX_VALUE),
+            HID_RI_LOGICAL_MAXIMUM(16, JOYSTICK2_MAX_VALUE),
+            HID_RI_REPORT_COUNT(8, JOYSTICK2_AXIS_COUNT),
+            HID_RI_REPORT_SIZE(8, 0x10),
+#    endif
+            HID_RI_INPUT(8, HID_IOF_DATA | HID_IOF_VARIABLE | HID_IOF_ABSOLUTE),
+        HID_RI_END_COLLECTION(0),
+    HID_RI_END_COLLECTION(0),
+};
+#endif
+
 #ifdef RAW_ENABLE
 const USB_Descriptor_HIDReport_Datatype_t PROGMEM RawReport[] = {
     HID_RI_USAGE_PAGE(16, RAW_USAGE_PAGE), // Vendor Defined
@@ -1058,6 +1098,46 @@ const USB_Descriptor_Configuration_t PROGMEM ConfigurationDescriptor = {
     },
 #endif
 
+#ifdef JOYSTICK2_ENABLE
+    /*
+     * Second joystick
+     */
+    .Joystick2_Interface = {
+        .Header = {
+            .Size               = sizeof(USB_Descriptor_Interface_t),
+            .Type               = DTYPE_Interface
+        },
+        .InterfaceNumber        = JOYSTICK2_INTERFACE,
+        .AlternateSetting       = 0x00,
+        .TotalEndpoints         = 1,
+        .Class                  = HID_CSCP_HIDClass,
+        .SubClass               = HID_CSCP_NonBootSubclass,
+        .Protocol               = HID_CSCP_NonBootProtocol,
+        .InterfaceStrIndex      = NO_DESCRIPTOR
+    },
+    .Joystick2_HID = {
+        .Header = {
+            .Size               = sizeof(USB_HID_Descriptor_HID_t),
+            .Type               = HID_DTYPE_HID
+        },
+        .HIDSpec                = VERSION_BCD(1, 1, 1),
+        .CountryCode            = 0x00,
+        .TotalReportDescriptors = 1,
+        .HIDReportType          = HID_DTYPE_Report,
+        .HIDReportLength        = sizeof(Joystick2Report)
+    },
+    .Joystick2_INEndpoint = {
+        .Header = {
+            .Size               = sizeof(USB_Descriptor_Endpoint_t),
+            .Type               = DTYPE_Endpoint
+        },
+        .EndpointAddress        = (ENDPOINT_DIR_IN | JOYSTICK2_IN_EPNUM),
+        .Attributes             = (EP_TYPE_INTERRUPT | ENDPOINT_ATTR_NO_SYNC | ENDPOINT_USAGE_DATA),
+        .EndpointSize           = JOYSTICK2_EPSIZE,
+        .PollingIntervalMS      = USB_POLLING_INTERVAL_MS
+    },
+#endif
+
 #if defined(DIGITIZER_ENABLE) && !defined(DIGITIZER_SHARED_EP)
     /*
      * Digitizer
@@ -1293,6 +1373,12 @@ uint16_t get_usb_descriptor(const uint16_t wValue, const uint16_t wIndex, const 
                     Size    = sizeof(USB_HID_Descriptor_HID_t);
                     break;
 #endif
+#ifdef JOYSTICK2_ENABLE
+                case JOYSTICK2_INTERFACE:
+                    Address = &ConfigurationDescriptor.Joystick2_HID;
+                    Size    = sizeof(USB_HID_Descriptor_HID_t);
+                    break;
+#endif
 #if defined(DIGITIZER_ENABLE) && !defined(DIGITIZER_SHARED_EP)
                 case DIGITIZER_INTERFACE:
                     Address = &ConfigurationDescriptor.Digitizer_HID;
@@ -1348,6 +1434,12 @@ uint16_t get_usb_descriptor(const uint16_t wValue, const uint16_t wIndex, const 
                 case JOYSTICK_INTERFACE:
                     Address = &JoystickReport;
                     Size    = sizeof(JoystickReport);
+                    break;
+#endif
+#ifdef JOYSTICK2_ENABLE
+                case JOYSTICK2_INTERFACE:
+                    Address = &Joystick2Report;
+                    Size    = sizeof(Joystick2Report);
                     break;
 #endif
 #if defined(DIGITIZER_ENABLE) && !defined(DIGITIZER_SHARED_EP)

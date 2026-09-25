@@ -483,6 +483,12 @@ void send_joystick(report_joystick_t *report) {
 #endif
 }
 
+#ifdef JOYSTICK2_ENABLE
+void send_joystick2(report_joystick2_t *report) {
+    send_report(USB_ENDPOINT_IN_JOYSTICK2, report, sizeof(report_joystick2_t));
+}
+#endif
+
 void send_digitizer(report_digitizer_t *report) {
 #ifdef DIGITIZER_ENABLE
     send_report(USB_ENDPOINT_IN_DIGITIZER, report, sizeof(report_digitizer_t));

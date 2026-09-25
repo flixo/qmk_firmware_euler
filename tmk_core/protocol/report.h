@@ -25,6 +25,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #ifdef JOYSTICK_ENABLE
 #    include "joystick.h"
 #endif
+#ifdef JOYSTICK2_ENABLE
+#    include "joystick2.h"
+#endif
 
 // clang-format off
 
@@ -263,6 +266,18 @@ typedef struct {
     uint8_t buttons[(JOYSTICK_BUTTON_COUNT - 1) / 8 + 1];
 #endif
 } PACKED report_joystick_t;
+
+#ifdef JOYSTICK2_ENABLE
+#    if JOYSTICK2_AXIS_RESOLUTION > 8
+typedef int16_t joystick2_axis_t;
+#    else
+typedef int8_t joystick2_axis_t;
+#    endif
+
+typedef struct {
+    joystick2_axis_t axes[JOYSTICK2_AXIS_COUNT];
+} PACKED report_joystick2_t;
+#endif
 
 /* keycode to system usage */
 static inline uint16_t KEYCODE2SYSTEM(uint8_t key) {

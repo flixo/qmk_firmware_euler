@@ -33,6 +33,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "eeconfig.h"
 #include "action_layer.h"
 #include "suspend.h"
+#ifdef JOYSTICK2_ENABLE
+#    include "joystick2.h"
+#endif
 #ifdef BOOTMAGIC_ENABLE
 #    include "bootmagic.h"
 #endif
@@ -521,6 +524,9 @@ void keyboard_init(void) {
 #ifdef JOYSTICK_ENABLE
     joystick_init();
 #endif
+#ifdef JOYSTICK2_ENABLE
+    joystick2_init();
+#endif
 #ifdef SLEEP_LED_ENABLE
     sleep_led_init();
 #endif
@@ -782,6 +788,10 @@ void keyboard_task(void) {
 
 #ifdef JOYSTICK_ENABLE
     joystick_task();
+#endif
+
+#ifdef JOYSTICK2_ENABLE
+    joystick2_task();
 #endif
 
 #ifdef BATTERY_ENABLE

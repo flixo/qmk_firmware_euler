@@ -31,6 +31,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #ifdef JOYSTICK_ENABLE
 #    include "joystick.h"
 #endif
+#ifdef JOYSTICK2_ENABLE
+#    include "joystick2.h"
+#endif
 
 #ifdef CONNECTION_ENABLE
 #    include "connection.h"
@@ -309,6 +312,35 @@ void host_joystick_send(joystick_t *joystick) {
 #endif
 
 __attribute__((weak)) void send_joystick(report_joystick_t *report) {}
+
+#ifdef JOYSTICK2_ENABLE
+void host_joystick2_send(joystick2_t *joystick) {
+    report_joystick2_t report = {
+        .axes = {
+            joystick->axes[0],
+#    if JOYSTICK2_AXIS_COUNT >= 2
+            joystick->axes[1],
+#    endif
+#    if JOYSTICK2_AXIS_COUNT >= 3
+            joystick->axes[2],
+#    endif
+#    if JOYSTICK2_AXIS_COUNT >= 4
+            joystick->axes[3],
+#    endif
+#    if JOYSTICK2_AXIS_COUNT >= 5
+            joystick->axes[4],
+#    endif
+#    if JOYSTICK2_AXIS_COUNT >= 6
+            joystick->axes[5],
+#    endif
+        },
+    };
+
+    send_joystick2(&report);
+}
+
+__attribute__((weak)) void send_joystick2(report_joystick2_t *report) {}
+#endif
 
 #ifdef DIGITIZER_ENABLE
 void host_digitizer_send(digitizer_t *digitizer) {

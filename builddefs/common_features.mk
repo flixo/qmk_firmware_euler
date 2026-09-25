@@ -868,6 +868,12 @@ ifeq ($(strip $(JOYSTICK_ENABLE)), yes)
     endif
 endif
 
+JOYSTICK2_ENABLE ?= no
+ifeq ($(strip $(JOYSTICK2_ENABLE)), yes)
+    OPT_DEFS += -DJOYSTICK2_ENABLE
+    SRC += $(QUANTUM_DIR)/joystick2.c
+endif
+
 USBPD_ENABLE ?= no
 VALID_USBPD_DRIVER_TYPES = custom vendor
 USBPD_DRIVER ?= vendor

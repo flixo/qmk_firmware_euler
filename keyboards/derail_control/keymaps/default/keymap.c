@@ -11,6 +11,9 @@ static uint32_t last_blink_time;
 
 #define JOYSTICK_CYCLE_MS 2000
 #define JOYSTICK_AXIS_OFFSET_MS 200
+#define JOYSTICK2_CYCLE_MS 3000
+#define JOYSTICK2_AXIS_OFFSET_MS 350
+#define JOYSTICK2_START_OFFSET_MS 1000
 
 joystick_config_t joystick_axes[JOYSTICK_AXIS_COUNT] = {
     JOYSTICK_AXIS_VIRTUAL, // x
@@ -28,14 +31,14 @@ void keyboard_post_init_user(void) {
     last_blink_time = timer_read32();
 }
 
-static int16_t joystick_axis_value(uint32_t elapsed_ms) {
-    uint32_t phase = elapsed_ms % JOYSTICK_CYCLE_MS;
+static int16_t joystick_axis_value(uint32_t elapsed_ms, uint32_t cycle_ms) {
+    uint32_t phase = elapsed_ms % cycle_ms;
 
-    if (phase < JOYSTICK_CYCLE_MS / 2) {
-        return -JOYSTICK_MAX_VALUE + (int32_t)phase * 2 * JOYSTICK_MAX_VALUE / (JOYSTICK_CYCLE_MS / 2);
+    if (phase < cycle_ms / 2) {
+        return -JOYSTICK_MAX_VALUE + (int32_t)phase * 2 * JOYSTICK_MAX_VALUE / (cycle_ms / 2);
     }
 
-    return JOYSTICK_MAX_VALUE - (int32_t)(phase - JOYSTICK_CYCLE_MS / 2) * 2 * JOYSTICK_MAX_VALUE / (JOYSTICK_CYCLE_MS / 2);
+    return JOYSTICK_MAX_VALUE - (int32_t)(phase - cycle_ms / 2) * 2 * JOYSTICK_MAX_VALUE / (cycle_ms / 2);
 }
 
 void matrix_scan_user(void) {
@@ -47,6 +50,10 @@ void matrix_scan_user(void) {
     }
 
     for (uint8_t axis = 0; axis < JOYSTICK_AXIS_COUNT; axis++) {
-        joystick_set_axis(axis, joystick_axis_value(elapsed_ms + axis * JOYSTICK_AXIS_OFFSET_MS));
+        joystick_set_axis(axis, joystick_axis_value(elapsed_ms + axis * JOYSTICK_AXIS_OFFSET_MS, JOYSTICK_CYCLE_MS));
+    }
+
+    for (uint8_t axis = 0; axis < JOYSTICK2_AXIS_COUNT; axis++) {
+        joystick2_set_axis(axis, joystick_axis_value(elapsed_ms + JOYSTICK2_START_OFFSET_MS + axis * JOYSTICK2_AXIS_OFFSET_MS, JOYSTICK2_CYCLE_MS));
     }
 }

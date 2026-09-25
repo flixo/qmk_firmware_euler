@@ -35,5 +35,8 @@ typedef struct {
 } host_driver_t;
 
 void send_joystick(report_joystick_t *report);
+#ifdef JOYSTICK2_ENABLE
+void send_joystick2(report_joystick2_t *report);
+#endif
 void send_digitizer(report_digitizer_t *report);
 void send_programmable_button(report_programmable_button_t *report);
