@@ -1,6 +1,6 @@
 {
     "manufacturer": "Jens N\u00f6mtak",
-    "keyboard_name": "derail_control",
+    "keyboard_name": "Derail Control Primary",
     "maintainer": "Jens N\u00f6mtak",
     "bootloader": "rp2040",
     "features": {
@@ -15,8 +15,8 @@
     },
     "processor": "RP2040",
     "usb": {
-        "device_version": "1.0.0",
-        "pid": "0x0000",
+        "device_version": "1.0.1",
+        "pid": "0x0002",
         "vid": "0xFEED"
     },
     "layouts": {

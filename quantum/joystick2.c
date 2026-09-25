@@ -4,6 +4,7 @@
 #include "joystick2.h"
 
 joystick2_t joystick2_state = {
+    .buttons = {0},
     .axes  = {0},
     .dirty = false,
 };
@@ -14,6 +15,20 @@ void joystick2_flush(void) {
     void host_joystick2_send(joystick2_t * joystick);
     host_joystick2_send(&joystick2_state);
     joystick2_state.dirty = false;
+}
+
+void joystick2_register_button(uint8_t button) {
+    if (button >= JOYSTICK2_BUTTON_COUNT) return;
+
+    joystick2_state.buttons[button / 8] |= 1 << (button % 8);
+    joystick2_state.dirty = true;
+}
+
+void joystick2_unregister_button(uint8_t button) {
+    if (button >= JOYSTICK2_BUTTON_COUNT) return;
+
+    joystick2_state.buttons[button / 8] &= ~(1 << (button % 8));
+    joystick2_state.dirty = true;
 }
 
 void joystick2_set_axis(uint8_t axis, int16_t value) {

@@ -9,6 +9,9 @@
 #define JOYSTICK_AXIS_COUNT 6
 // Min 8, max 16
 #define JOYSTICK_AXIS_RESOLUTION 10
+// #define JOYSTICK_INTERFACE_NAME "Derail Control Primary"
 
 #define JOYSTICK2_AXIS_COUNT 6
 #define JOYSTICK2_AXIS_RESOLUTION 10
+#define JOYSTICK2_BUTTON_COUNT 16
+#define JOYSTICK2_INTERFACE_NAME "Derail Control Secondary"

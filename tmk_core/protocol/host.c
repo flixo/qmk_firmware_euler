@@ -334,6 +334,18 @@ void host_joystick2_send(joystick2_t *joystick) {
             joystick->axes[5],
 #    endif
         },
+    .buttons = {
+        joystick->buttons[0],
+#    if JOYSTICK2_BUTTON_COUNT > 8
+        joystick->buttons[1],
+#    endif
+#    if JOYSTICK2_BUTTON_COUNT > 16
+        joystick->buttons[2],
+#    endif
+#    if JOYSTICK2_BUTTON_COUNT > 24
+        joystick->buttons[3],
+#    endif
+    },
     };
 
     send_joystick2(&report);

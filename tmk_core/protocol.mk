@@ -6,6 +6,7 @@ SRC +=	\
 
 SHARED_EP_ENABLE = no
 MOUSE_SHARED_EP ?= yes
+JOYSTICK_SHARED_EP ?= auto
 ifeq ($(strip $(KEYBOARD_SHARED_EP)), yes)
     OPT_DEFS += -DKEYBOARD_SHARED_EP
     SHARED_EP_ENABLE = yes
@@ -65,9 +66,11 @@ endif
 
 ifeq ($(strip $(JOYSTICK_ENABLE)), yes)
     OPT_DEFS += -DJOYSTICK_ENABLE
+    ifeq ($(strip $(JOYSTICK_SHARED_EP)), auto)
     ifeq ($(strip $(SHARED_EP_ENABLE)), yes)
         OPT_DEFS += -DJOYSTICK_SHARED_EP
         SHARED_EP_ENABLE = yes
+    endif
     endif
 endif
 

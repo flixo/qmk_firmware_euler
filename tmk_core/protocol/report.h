@@ -276,6 +276,7 @@ typedef int8_t joystick2_axis_t;
 
 typedef struct {
     joystick2_axis_t axes[JOYSTICK2_AXIS_COUNT];
+    uint8_t           buttons[(JOYSTICK2_BUTTON_COUNT - 1) / 8 + 1];
 } PACKED report_joystick2_t;
 #endif
 
