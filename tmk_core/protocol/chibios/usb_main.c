@@ -57,6 +57,7 @@ extern usb_endpoint_out_t usb_endpoints_out[USB_ENDPOINT_OUT_COUNT];
 static bool __attribute__((__unused__)) send_report_buffered(usb_endpoint_in_lut_t endpoint, void *report, size_t size);
 static void __attribute__((__unused__)) flush_report_buffered(usb_endpoint_in_lut_t endpoint, bool padded);
 static bool __attribute__((__unused__)) receive_report(usb_endpoint_out_lut_t endpoint, void *report, size_t size);
+static size_t __attribute__((__unused__)) receive_report_available(usb_endpoint_out_lut_t endpoint, void *report, size_t size);
 
 /* ---------------------------------------------------------
  *            Descriptors and USB driver objects
@@ -434,6 +435,10 @@ static bool receive_report(usb_endpoint_out_lut_t endpoint, void *report, size_t
     return usb_endpoint_out_receive(&usb_endpoints_out[endpoint], (uint8_t *)report, size, TIME_IMMEDIATE);
 }
 
+static size_t receive_report_available(usb_endpoint_out_lut_t endpoint, void *report, size_t size) {
+    return usb_endpoint_out_receive_available(&usb_endpoints_out[endpoint], (uint8_t *)report, size, TIME_IMMEDIATE);
+}
+
 void send_keyboard(report_keyboard_t *report) {
     /* If we're in Boot Protocol, don't send any report ID or other funky fields */
     if (usb_device_state_get_protocol() == USB_PROTOCOL_BOOT) {
@@ -584,8 +589,9 @@ __attribute__((weak)) void virtser_recv(uint8_t c) {
 
 void virtser_task(void) {
     uint8_t buffer[CDC_EPSIZE];
-    while (receive_report(USB_ENDPOINT_OUT_CDC_DATA, buffer, sizeof(buffer))) {
-        for (int i = 0; i < sizeof(buffer); i++) {
+    size_t received;
+    while ((received = receive_report_available(USB_ENDPOINT_OUT_CDC_DATA, buffer, sizeof(buffer))) > 0) {
+        for (size_t i = 0; i < received; i++) {
             virtser_recv(buffer[i]);
         }
     }
